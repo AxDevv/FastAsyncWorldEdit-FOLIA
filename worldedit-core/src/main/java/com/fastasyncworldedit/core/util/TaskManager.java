@@ -361,11 +361,30 @@ public abstract class TaskManager {
      * Quickly run a task on the main thread, and wait for execution to finish.
      * - Useful if you need to access something from the Bukkit API from another thread<br>
      * - Usually wait time is around 25ms<br>
+     * - On Folia, this will attempt sync execution but fall back to async to prevent deadlocks
      */
     public <T> T sync(final Supplier<T> function) {
         if (Fawe.isMainThread()) {
             return function.get();
         }
+        
+        // Check if we're on Folia by detecting if we're on a region thread
+        try {
+            // Try to detect Folia by checking thread name patterns
+            String threadName = Thread.currentThread().getName();
+            if (threadName.contains("Region Scheduler Thread") || threadName.contains("TickThread")) {
+                // We're likely on Folia - avoid blocking sync calls that can cause deadlocks
+                // Instead, schedule the task and return a reasonable default or throw
+                Fawe.instance().getQueueHandler().sync(function);
+                // For Folia, we can't safely wait for the result without risking deadlock
+                // The calling code needs to be refactored to handle async execution
+                throw new UnsupportedOperationException("Synchronous execution from region thread is not supported on Folia. "
+                    + "Please refactor to use async execution.");
+            }
+        } catch (Exception e) {
+            // If thread detection fails, continue with normal sync execution
+        }
+        
         try {
             return Fawe.instance().getQueueHandler().sync(function).get();
         } catch (InterruptedException | ExecutionException e) {

@@ -98,6 +98,13 @@ public abstract class QueueHandler implements Trimable, Runnable {
     protected QueueHandler() {
         TaskManager.taskManager().repeat(this, 1);
     }
+    
+    private boolean isFoliaThread() {
+        String threadName = Thread.currentThread().getName();
+        return threadName.contains("Region Scheduler Thread") || 
+               threadName.contains("TickThread") || 
+               threadName.contains("GlobalTick");
+    }
 
     @ApiStatus.Internal
     public ThreadPoolExecutor getBlockingExecutor() {
@@ -106,7 +113,7 @@ public abstract class QueueHandler implements Trimable, Runnable {
 
     @Override
     public void run() {
-        if (!Fawe.isMainThread()) {
+        if (!Fawe.isMainThread() && !isFoliaThread()) {
             throw new IllegalStateException("Not main thread");
         }
         if (!syncTasks.isEmpty()) {

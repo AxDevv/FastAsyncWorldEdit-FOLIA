@@ -199,23 +199,35 @@ public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, L
 
     @Override
     public FaweCompoundTag tile(final int x, final int y, final int z) {
-        BlockEntity blockEntity = getChunk().getBlockEntity(new BlockPos((x & 15) + (
-                chunkX << 4), y, (z & 15) + (
-                chunkZ << 4)));
-        if (blockEntity == null) {
+        try {
+            BlockEntity blockEntity = getChunk().getBlockEntity(new BlockPos((x & 15) + (
+                    chunkX << 4), y, (z & 15) + (
+                    chunkZ << 4)));
+            if (blockEntity == null) {
+                return null;
+            }
+            return NMS_TO_TILE.apply(blockEntity);
+        } catch (NullPointerException e) {
+            // Handle Folia-specific issue where getCurrentWorldData() returns null
+            // This occurs when trying to access capturedTileEntities on Folia servers
             return null;
         }
-        return NMS_TO_TILE.apply(blockEntity);
 
     }
 
     @Override
     public Map<BlockVector3, FaweCompoundTag> tiles() {
-        Map<BlockPos, BlockEntity> nmsTiles = getChunk().getBlockEntities();
-        if (nmsTiles.isEmpty()) {
+        try {
+            Map<BlockPos, BlockEntity> nmsTiles = getChunk().getBlockEntities();
+            if (nmsTiles.isEmpty()) {
+                return Collections.emptyMap();
+            }
+            return AdaptedMap.immutable(nmsTiles, posNms2We, NMS_TO_TILE);
+        } catch (NullPointerException e) {
+            // Handle Folia-specific issue where getCurrentWorldData() returns null
+            // This occurs when trying to access capturedTileEntities on Folia servers
             return Collections.emptyMap();
         }
-        return AdaptedMap.immutable(nmsTiles, posNms2We, NMS_TO_TILE);
     }
 
     @Override

@@ -58,11 +58,35 @@ public class PaperweightFaweWorldNativeAccess implements WorldNativeAccess<Level
         this.level = level;
         // Use the actual tick as minecraft-defined so we don't try to force blocks into the world when the server's already lagging.
         //  - With the caveat that we don't want to have too many cached changed (1024) so we'd flush those at 1024 anyway.
-        this.lastTick = new AtomicInteger(MinecraftServer.currentTick);
+        this.lastTick = new AtomicInteger(getCurrentTick());
     }
 
     private Level getLevel() {
         return Objects.requireNonNull(level.get(), "The reference to the world was lost");
+    }
+
+    private int getCurrentTick() {
+        try {
+            // Try to get server instance and use getTickCount() - Folia compatible
+            Level currentLevel = level.get();
+            if (currentLevel != null) {
+                // Try various ways to get the MinecraftServer instance
+                MinecraftServer server = currentLevel.getServer();
+                if (server != null) {
+                    return server.getTickCount();
+                }
+            }
+        } catch (Exception e) {
+            // Fallback for older versions or if method doesn't exist
+        }
+        
+        try {
+            // Try Paper/Spigot static field
+            return MinecraftServer.currentTick;
+        } catch (NoSuchFieldError e) {
+            // Last fallback: System time-based approximation
+            return (int) (System.currentTimeMillis() / 50); // Approximate tick count (50ms per tick)
+        }
     }
 
     @Override
@@ -94,7 +118,7 @@ public class PaperweightFaweWorldNativeAccess implements WorldNativeAccess<Level
             LevelChunk levelChunk, BlockPos blockPos,
             net.minecraft.world.level.block.state.BlockState blockState
     ) {
-        int currentTick = MinecraftServer.currentTick;
+        int currentTick = getCurrentTick();
         if (Fawe.isMainThread()) {
             return levelChunk.setBlockState(blockPos, blockState,
                     this.sideEffectSet != null && this.sideEffectSet.shouldApply(SideEffect.UPDATE)

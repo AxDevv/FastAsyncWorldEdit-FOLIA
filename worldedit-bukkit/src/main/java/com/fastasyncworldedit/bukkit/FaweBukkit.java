@@ -11,6 +11,8 @@ import com.fastasyncworldedit.bukkit.regions.ResidenceFeature;
 import com.fastasyncworldedit.bukkit.regions.TownyFeature;
 import com.fastasyncworldedit.bukkit.regions.WorldGuardFeature;
 import com.fastasyncworldedit.bukkit.util.BukkitTaskManager;
+import com.fastasyncworldedit.bukkit.util.FoliaTaskManager;
+import com.fastasyncworldedit.bukkit.util.ServerCompatibility;
 import com.fastasyncworldedit.bukkit.util.ItemUtil;
 import com.fastasyncworldedit.bukkit.util.image.BukkitImageViewer;
 import com.fastasyncworldedit.core.FAWEPlatformAdapterImpl;
@@ -64,6 +66,7 @@ public class FaweBukkit implements IFawe, Listener {
 
     public FaweBukkit(Plugin plugin) {
         this.plugin = plugin;
+        LOGGER.info("Detected server implementation: {}", ServerCompatibility.getServerImplementation());
         try {
             Fawe.set(this);
             Fawe.setupInjector();
@@ -172,7 +175,12 @@ public class FaweBukkit implements IFawe, Listener {
      */
     @Override
     public TaskManager getTaskManager() {
-        return new BukkitTaskManager(plugin);
+        if (ServerCompatibility.isFolia()) {
+            LOGGER.info("Detected Folia server, using FoliaTaskManager");
+            return new FoliaTaskManager(plugin);
+        } else {
+            return new BukkitTaskManager(plugin);
+        }
     }
 
     public Plugin getPlugin() {

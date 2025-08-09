@@ -163,29 +163,44 @@ public class BukkitPlayer extends AbstractPlayerActor {
     public void giveItem(BaseItemStack itemStack) {
         final PlayerInventory inv = player.getInventory();
         ItemStack newItem = BukkitAdapter.adapt(itemStack);
-        TaskManager.taskManager().sync(() -> {
-            if (itemStack.getType().id().equalsIgnoreCase(WorldEdit.getInstance().getConfiguration().wandItem)) {
-                inv.remove(newItem);
-            }
-            final ItemStack item = player.getInventory().getItemInMainHand();
-            player.getInventory().setItemInMainHand(newItem);
-            HashMap<Integer, ItemStack> overflow = inv.addItem(item);
-            if (!overflow.isEmpty()) {
-                for (Map.Entry<Integer, ItemStack> entry : overflow.entrySet()) {
-                    ItemStack stack = entry.getValue();
-                    if (stack.getType() != Material.AIR && stack.getAmount() > 0) {
-                        Item dropped = player.getWorld().dropItem(player.getLocation(), stack);
-                        PlayerDropItemEvent event = new PlayerDropItemEvent(player, dropped);
-                        Bukkit.getPluginManager().callEvent(event);
-                        if (event.isCancelled()) {
-                            dropped.remove();
-                        }
+        
+        // Check if we're on a Folia region thread to avoid deadlocks
+        String threadName = Thread.currentThread().getName();
+        boolean isFoliaRegionThread = threadName.contains("Region Scheduler Thread") || threadName.contains("TickThread");
+        
+        if (isFoliaRegionThread) {
+            // On Folia, execute directly since we're already on the correct thread
+            giveItemDirect(itemStack, inv, newItem);
+        } else {
+            // On Paper/Spigot, use sync execution
+            TaskManager.taskManager().sync(() -> {
+                giveItemDirect(itemStack, inv, newItem);
+                return null;
+            });
+        }
+    }
+    
+    private void giveItemDirect(BaseItemStack itemStack, PlayerInventory inv, ItemStack newItem) {
+        if (itemStack.getType().id().equalsIgnoreCase(WorldEdit.getInstance().getConfiguration().wandItem)) {
+            inv.remove(newItem);
+        }
+        final ItemStack item = player.getInventory().getItemInMainHand();
+        player.getInventory().setItemInMainHand(newItem);
+        HashMap<Integer, ItemStack> overflow = inv.addItem(item);
+        if (!overflow.isEmpty()) {
+            for (Map.Entry<Integer, ItemStack> entry : overflow.entrySet()) {
+                ItemStack stack = entry.getValue();
+                if (stack.getType() != Material.AIR && stack.getAmount() > 0) {
+                    Item dropped = player.getWorld().dropItem(player.getLocation(), stack);
+                    PlayerDropItemEvent event = new PlayerDropItemEvent(player, dropped);
+                    Bukkit.getPluginManager().callEvent(event);
+                    if (event.isCancelled()) {
+                        dropped.remove();
                     }
                 }
             }
-            player.updateInventory();
-            return null;
-        });
+        }
+        player.updateInventory();
     }
     //FAWE end
 

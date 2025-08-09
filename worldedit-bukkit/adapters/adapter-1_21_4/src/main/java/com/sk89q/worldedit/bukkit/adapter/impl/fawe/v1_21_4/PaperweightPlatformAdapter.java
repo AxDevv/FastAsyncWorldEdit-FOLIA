@@ -303,9 +303,28 @@ public final class PaperweightPlatformAdapter extends NMSAdapter {
 
     private static void addTicket(ServerLevel serverLevel, int chunkX, int chunkZ) {
         // Ensure chunk is definitely loaded before applying a ticket
-        io.papermc.paper.util.MCUtil.MAIN_EXECUTOR.execute(() -> serverLevel
-                .getChunkSource()
-                .addRegionTicket(ChunkHolderManager.UNLOAD_COOLDOWN, new ChunkPos(chunkX, chunkZ), 0, Unit.INSTANCE));
+        try {
+            // Try to detect if we're on Folia by checking thread name
+            String threadName = Thread.currentThread().getName();
+            if (threadName.contains("Region Scheduler Thread") || threadName.contains("TickThread")) {
+                // On Folia, execute directly since we're already on the correct region thread
+                serverLevel.getChunkSource()
+                    .addRegionTicket(ChunkHolderManager.UNLOAD_COOLDOWN, new ChunkPos(chunkX, chunkZ), 0, Unit.INSTANCE);
+            } else {
+                // On Paper/Spigot, use the main executor
+                io.papermc.paper.util.MCUtil.MAIN_EXECUTOR.execute(() -> serverLevel
+                    .getChunkSource()
+                    .addRegionTicket(ChunkHolderManager.UNLOAD_COOLDOWN, new ChunkPos(chunkX, chunkZ), 0, Unit.INSTANCE));
+            }
+        } catch (UnsupportedOperationException e) {
+            // Fallback for Folia - execute directly
+            try {
+                serverLevel.getChunkSource()
+                    .addRegionTicket(ChunkHolderManager.UNLOAD_COOLDOWN, new ChunkPos(chunkX, chunkZ), 0, Unit.INSTANCE);
+            } catch (Exception ignored) {
+                // If ticket addition fails, continue without it
+            }
+        }
     }
 
     public static ChunkHolder getPlayerChunk(ServerLevel nmsWorld, final int chunkX, final int chunkZ) {
@@ -338,7 +357,7 @@ public final class PaperweightPlatformAdapter extends NMSAdapter {
         if (lockHolder.chunkLock == null) {
             return;
         }
-        MinecraftServer.getServer().execute(() -> {
+        Runnable sendTask = () -> {
             try {
                 ChunkPos pos = levelChunk.getPos();
                 ClientboundLevelChunkWithLightPacket packet;
@@ -363,7 +382,22 @@ public final class PaperweightPlatformAdapter extends NMSAdapter {
             } finally {
                 NMSAdapter.endChunkPacketSend(nmsWorld.getWorld().getName(), pair, lockHolder);
             }
-        });
+        };
+        
+        try {
+            // Try to detect if we're on Folia by checking thread name
+            String threadName = Thread.currentThread().getName();
+            if (threadName.contains("Region Scheduler Thread") || threadName.contains("TickThread")) {
+                // On Folia, execute directly since we're already on the correct region thread
+                sendTask.run();
+            } else {
+                // On Paper/Spigot, use the main server executor
+                MinecraftServer.getServer().execute(sendTask);
+            }
+        } catch (UnsupportedOperationException e) {
+            // Fallback for Folia - execute directly
+            sendTask.run();
+        }
     }
 
     private static List<ServerPlayer> nearbyPlayers(ServerLevel serverLevel, ChunkPos coordIntPair) {
